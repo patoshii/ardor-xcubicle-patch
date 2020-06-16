@@ -1,0 +1,167 @@
+From ad0fb22bc11828487e74a48b18e11be644ff1d72 Mon Sep 17 00:00:00 2001
+From: Toxiapo <Toxiapo@gmail.com>
+Date: Fri, 24 May 2019 15:34:36 -0400
+Subject: [PATCH] new api: searchProperty
+
+---
+ src/java/nxt/account/Account.java     | 26 +++++++++-
+ src/java/nxt/http/APIEnum.java        |  1 +
+ src/java/nxt/http/JSONData.java       |  9 ++++
+ src/java/nxt/http/SearchProperty.java | 69 +++++++++++++++++++++++++++
+ 4 files changed, 104 insertions(+), 1 deletion(-)
+ create mode 100644 src/java/nxt/http/SearchProperty.java
+
+diff --git a/src/java/nxt/account/Account.java b/src/java/nxt/account/Account.java
+index c42d14f..43eaacd 100644
+--- a/src/java/nxt/account/Account.java
++++ b/src/java/nxt/account/Account.java
+@@ -216,7 +216,6 @@ public final class Account {
+     }
+ 
+     public static final class AccountLease {
+-
+         private final long lessorId;
+         private final DbKey dbKey;
+         private long currentLesseeId;
+@@ -820,6 +819,31 @@ public final class Account {
+         return accountPropertyTable.getManyBy(dbClause, from, to, " ORDER BY property ");
+     }
+ 
++    public static DbIterator<AccountProperty> searchProperties(long recipientId, long setterId, String property, String value, int from, int to) {
++        DbClause dbClause = null;
++        if (setterId != 0) {
++            dbClause = new DbClause.LongClause("setter_id", setterId);
++        } else if (recipientId != 0) {
++            dbClause = new DbClause.LongClause("recipient_id", recipientId);
++        }
++
++        if (dbClause == null) {
++            if (value != null) {
++                dbClause = new DbClause.LikeClause("value", value);
++            } else if (property != null) {
++                dbClause = new DbClause.LikeClause("property", property);
++            }
++        } else {
++            if (value != null) {
++                dbClause = dbClause.and(new DbClause.LikeClause("value", value));
++            } else if (property != null) {
++                dbClause = dbClause.and(new DbClause.LikeClause("property", property));
++            }
++        }
++
++        return accountPropertyTable.getManyBy(dbClause, from, to, " ORDER BY property ");
++    }
++
+     public static AccountProperty getProperty(long recipientId, String property) {
+         return getProperty(recipientId, property, recipientId);
+     }
+diff --git a/src/java/nxt/http/APIEnum.java b/src/java/nxt/http/APIEnum.java
+index 0bae58d..6c4ab5a 100644
+--- a/src/java/nxt/http/APIEnum.java
++++ b/src/java/nxt/http/APIEnum.java
+@@ -230,6 +230,7 @@ public enum APIEnum {
+     SEARCH_CURRENCIES("searchCurrencies", SearchCurrencies.instance),
+     SEARCH_POLLS("searchPolls", SearchPolls.instance),
+     SEARCH_ACCOUNTS("searchAccounts", SearchAccounts.instance),
++    SEARCH_PROPERTY("searchProperty", SearchProperty.instance),
+     SEARCH_TAGGED_DATA("searchTaggedData", SearchTaggedData.instance),
+     UPLOAD_TAGGED_DATA("uploadTaggedData", UploadTaggedData.instance),
+     GET_ACCOUNT_TAGGED_DATA("getAccountTaggedData", GetAccountTaggedData.instance),
+diff --git a/src/java/nxt/http/JSONData.java b/src/java/nxt/http/JSONData.java
+index a7f0420..1b298aa 100644
+--- a/src/java/nxt/http/JSONData.java
++++ b/src/java/nxt/http/JSONData.java
+@@ -257,6 +257,15 @@ public final class JSONData {
+         return json;
+     }
+ 
++    static JSONObject accountPropertyOnly(Account.AccountProperty accountProperty) {
++        JSONObject json = new JSONObject();
++        putAccount(json, "recipient", accountProperty.getRecipientId());
++        putAccount(json, "setter", accountProperty.getSetterId());
++        json.put("property", accountProperty.getProperty());
++        json.put("value", accountProperty.getValue());
++        return json;
++    }
++
+     static JSONObject assetProperty(Asset.AssetProperty property, boolean includeAsset, boolean includeSetter) {
+         JSONObject json = new JSONObject();
+         if (includeAsset) {
+diff --git a/src/java/nxt/http/SearchProperty.java b/src/java/nxt/http/SearchProperty.java
+new file mode 100644
+index 0000000..735f082
+--- /dev/null
++++ b/src/java/nxt/http/SearchProperty.java
+@@ -0,0 +1,69 @@
++/*
++ * Copyright © 2013-2016 The Nxt Core Developers.
++ * Copyright © 2016-2017 Jelurida IP B.V.
++ *
++ * See the LICENSE.txt file at the top-level directory of this distribution
++ * for licensing information.
++ *
++ * Unless otherwise agreed in a custom licensing agreement with Jelurida B.V.,
++ * no part of the Nxt software, including this file, may be copied, modified,
++ * propagated, or distributed except according to the terms contained in the
++ * LICENSE.txt file.
++ *
++ * Removal or modification of this copyright notice is prohibited.
++ *
++ */
++
++package nxt.http;
++
++import nxt.account.Account;
++import nxt.NxtException;
++import nxt.db.DbIterator;
++import nxt.util.Convert;
++import org.json.simple.JSONArray;
++import org.json.simple.JSONObject;
++import org.json.simple.JSONStreamAware;
++
++import javax.servlet.http.HttpServletRequest;
++
++public final class SearchProperty extends APIServlet.APIRequestHandler {
++
++    static final SearchProperty instance = new SearchProperty();
++
++    private SearchProperty() {
++        super(new APITag[] { APITag.ACCOUNTS }, "recipient", "property", "value", "setter", "firstIndex", "lastIndex");
++    }
++
++    @Override
++    protected JSONStreamAware processRequest(HttpServletRequest req) throws NxtException {
++
++        long recipientId = ParameterParser.getAccountId(req, "recipient", false);
++        long setterId = ParameterParser.getAccountId(req, "setter", false);
++
++        String property = Convert.emptyToNull(req.getParameter("property"));
++        String value = Convert.emptyToNull(req.getParameter("value"));
++        int firstIndex = ParameterParser.getFirstIndex(req);
++        int lastIndex = ParameterParser.getLastIndex(req);
++
++        JSONObject response = new JSONObject();
++        JSONArray propertiesJSON = new JSONArray();
++        response.put("properties", propertiesJSON);
++
++        if (recipientId != 0) {
++            JSONData.putAccount(response, "recipient", recipientId);
++        }
++        if (setterId != 0) {
++            JSONData.putAccount(response, "setter", setterId);
++        }
++
++        try (DbIterator<Account.AccountProperty> iterator = Account.searchProperties(recipientId, setterId, property,
++                value, firstIndex, lastIndex)) {
++            while (iterator.hasNext()) {
++                propertiesJSON.add(JSONData.accountPropertyOnly(iterator.next()));
++            }
++        }
++        return response;
++
++    }
++
++}
+-- 
+2.20.1
+
