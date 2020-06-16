@@ -1,10 +1,11 @@
-#Ardor Xcubicle Patch Ver 1.0#
+# Ardor Xcubicle Patch Ver 1.0
 
 Enhances existing Ardor nodes with an improved interface and additional API properties.
 
 - Added requestType=searchProperty to be able to search property values instead of just property names.
 
-#Proof of Service - Reward System#
+# Proof of Service - Reward System
+
 Earn credits for patching your Ardor node and providing it as a public service. Register your patched Ardor node via the Ardor Telegram bot. Instructions:
 
 1. Apply the Xcubicle patch to your Ardor node. Testnet or Mainnet applicable.
