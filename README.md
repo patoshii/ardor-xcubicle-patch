@@ -4,7 +4,7 @@ Enhances existing Ardor nodes with an improved interface and additional API prop
 
 - Added requestType=searchProperty to be able to search property values instead of just property names.
 
-# Proof of Service - Reward System
+# Proof of Service - Reward Claim System
 
 Earn credits for patching your Ardor node and providing it as a public service. Register your patched Ardor node via the Ardor Telegram bot. Instructions:
 
